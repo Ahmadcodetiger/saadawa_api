@@ -2,89 +2,82 @@
 import mongoose from 'mongoose';
 import { config, logger } from './bootstrap.js';
 
-// Cache the database connection to prevent multiple connections
-// This is crucial for serverless environments
+// Cache the database connection
 let cachedConnection: typeof mongoose | null = null;
 let connectionPromise: Promise<typeof mongoose> | null = null;
+let connectionAttempts = 0;
 
 export const connectDB = async (): Promise<typeof mongoose> => {
-  // If we already have a connection, use it
+  connectionAttempts++;
+  const attemptId = connectionAttempts;
+
+  // If we have a cached connection, verify it's alive
   if (cachedConnection) {
-    logger.debug('📊 Using cached database connection');
-    return cachedConnection;
+    try {
+      // Check if connection is actually alive
+      await mongoose.connection.db.admin().ping();
+      logger.debug(`📊 Using cached database connection (attempt #${attemptId})`);
+      return cachedConnection;
+    } catch (error) {
+      logger.warn(`📊 Cached connection is dead, reconnecting... (attempt #${attemptId})`);
+      cachedConnection = null;
+    }
   }
 
-  // If a connection is already in progress, wait for it
+  // If a connection attempt is in progress, wait for it
   if (connectionPromise) {
-    logger.debug('📊 Waiting for existing connection attempt...');
+    logger.debug(`📊 Waiting for existing connection (attempt #${attemptId})`);
     return connectionPromise;
   }
 
-  logger.info('📊 Creating new database connection...');
+  logger.info(`📊 Creating new database connection (attempt #${attemptId})...`);
 
-  // Set up connection options optimized for serverless
+  // Log connection string (safe version)
+  const safeUri = config.mongoUri.replace(
+    /(mongodb\+srv:\/\/[^:]+:)([^@]+)(@.+)/,
+    '$1***HIDDEN***$3'
+  );
+  logger.info(`📊 Connecting to: ${safeUri}`);
+
+  // Serverless-optimized connection options
   const options = {
-    // How long to wait for a connection
-    serverSelectionTimeoutMS: 5000,
-    // How long to wait for a socket
+    serverSelectionTimeoutMS: 10000,
+    connectTimeoutMS: 10000,
     socketTimeoutMS: 45000,
-    // Maximum number of connections in the pool
     maxPoolSize: 10,
-    // Minimum number of connections in the pool
     minPoolSize: 1,
-    // Keep trying to connect
-    family: 4, // Force IPv4
-    // Buffer commands when disconnected
-    bufferCommands: true,
-    // Don't buffer commands when disconnected
+    family: 4,
+    retryWrites: true,
+    retryReads: true,
+    bufferCommands: false,
     bufferMaxEntries: 0,
-    // Auto reconnect
-    autoCreate: true,
-    autoIndex: true,
   };
 
-  // Create the connection promise
+  // Create connection promise
   connectionPromise = mongoose.connect(config.mongoUri, options)
     .then((mongoose) => {
-      logger.info('✅ MongoDB connected successfully');
+      logger.info(`✅ MongoDB connected successfully (attempt #${attemptId})`);
+      logger.info(`📊 Connected to: ${mongoose.connection.host}/${mongoose.connection.name}`);
+      
       cachedConnection = mongoose;
       connectionPromise = null;
       return mongoose;
     })
     .catch((error) => {
-      logger.error('❌ MongoDB connection error:', {
+      logger.error(`❌ MongoDB connection error (attempt #${attemptId}):`, {
         name: error.name,
         message: error.message,
         code: error.code,
-        stack: error.stack,
       });
+
       connectionPromise = null;
       throw error;
     });
 
-  // Add connection event listeners
-  mongoose.connection.on('connected', () => {
-    logger.info('🔌 MongoDB connection established');
-  });
-
-  mongoose.connection.on('disconnected', () => {
-    logger.warn('🔌 MongoDB disconnected');
-    cachedConnection = null;
-  });
-
-  mongoose.connection.on('error', (err) => {
-    logger.error('🔌 MongoDB connection error:', err);
-    cachedConnection = null;
-  });
-
-  mongoose.connection.on('reconnected', () => {
-    logger.info('🔌 MongoDB reconnected');
-  });
-
   return connectionPromise;
 };
 
-// Helper function to check connection status
+// Get connection status with all properties
 export const getConnectionStatus = () => {
   const states = ['disconnected', 'connected', 'connecting', 'disconnecting'];
   const readyState = mongoose.connection.readyState;
@@ -94,10 +87,31 @@ export const getConnectionStatus = () => {
     state: states[readyState] || 'unknown',
     readyState,
     hasCachedConnection: !!cachedConnection,
+    connectionAttempts,
+    host: mongoose.connection.host || 'unknown',
+    name: mongoose.connection.name || 'unknown',
   };
 };
 
-// Graceful shutdown (not typically used in serverless, but good for development)
+// Add connection event listeners
+mongoose.connection.on('connected', () => {
+  logger.info('🔌 MongoDB connection established');
+});
+
+mongoose.connection.on('disconnected', () => {
+  logger.warn('🔌 MongoDB disconnected');
+  cachedConnection = null;
+});
+
+mongoose.connection.on('error', (err) => {
+  logger.error('🔌 MongoDB connection error:', err);
+  cachedConnection = null;
+});
+
+mongoose.connection.on('reconnected', () => {
+  logger.info('🔌 MongoDB reconnected');
+});
+
 export const disconnectDB = async (): Promise<void> => {
   if (mongoose.connection.readyState !== 0) {
     await mongoose.disconnect();
