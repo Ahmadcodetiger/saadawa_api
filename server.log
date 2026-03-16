@@ -1,0 +1,18 @@
+
+> backend@1.0.0 dev
+> nodemon --exec tsx src/server.ts
+
+[33m[nodemon] 3.1.10[39m
+[33m[nodemon] to restart at any time, enter `rs`[39m
+[33m[nodemon] watching path(s): *.*[39m
+[33m[nodemon] watching extensions: ts,json[39m
+[32m[nodemon] starting `tsx src/server.ts`[39m
+[dotenv@17.2.3] injecting env (0) from ../.env -- tip: 👥 sync secrets across teammates & machines: https://dotenvx.com/ops
+[dotenv@17.2.3] injecting env (23) from .env -- tip: 🔐 encrypt with Dotenvx: https://dotenvx.com
+🔍 Loading app module...
+[dotenv@17.2.3] injecting env (0) from .env -- tip: ⚙️  enable debug logging with { debug: true }
+🔌 Attempting to connect to MongoDB at: mongodb://127.0.0.1:27017/connecta_vtu
+[32minfo[39m: MongoDB connected successfully {"timestamp":"2025-11-08T12:01:08.031Z"}
+✅ MongoDB connected successfully
+✅ Server running on http://localhost:5000
+🔧 Environment: development
