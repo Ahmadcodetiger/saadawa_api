@@ -1,12 +1,18 @@
 // config/bootstrap.ts
+// Loads .env, then creates config and logger, avoiding circular dependency.
 import { loadEnv } from './loadEnv.js';
 
+// 1. Load .env (no logger yet, so use console)
 await loadEnv();
+
+// 2. Now import config (process.env is ready)
 import { config } from './env.js';
+
+// 3. Now import and create logger (config is ready)
 import path from 'path';
 import winston from 'winston';
 
-const isVercel = process.env.VERCEL === '1';
+const isVercel = process.env.VERCEL === '1' || !!process.env.VERCEL;
 
 // Simple format for console
 const consoleFormat = winston.format.combine(
@@ -17,7 +23,12 @@ const consoleFormat = winston.format.combine(
   })
 );
 
-// Create logger with conditional transports
+const fileFormat = winston.format.combine(
+  winston.format.timestamp(),
+  winston.format.json()
+);
+
+// Create logger with console transport (always available)
 const logger = winston.createLogger({
   level: config.logLevel,
   transports: [
@@ -25,34 +36,29 @@ const logger = winston.createLogger({
   ]
 });
 
-// Only add file transports in development and not on Vercel
+// Only add file transports when NOT on Vercel and NOT in production
 if (!isVercel && process.env.NODE_ENV !== 'production') {
   try {
-    const fs = require('fs');
+    const fs = await import('fs');
     const logsDir = 'logs';
-    
+
     if (!fs.existsSync(logsDir)) {
       fs.mkdirSync(logsDir, { recursive: true });
     }
-    
-    const fileFormat = winston.format.combine(
-      winston.format.timestamp(),
-      winston.format.json()
-    );
-    
-    logger.add(new winston.transports.File({ 
-      filename: path.join('logs', 'error.log'), 
+
+    logger.add(new winston.transports.File({
+      filename: path.join('logs', 'error.log'),
       level: 'error',
-      format: fileFormat 
+      format: fileFormat
     }));
-    
-    logger.add(new winston.transports.File({ 
+
+    logger.add(new winston.transports.File({
       filename: path.join('logs', 'combined.log'),
-      format: fileFormat 
+      format: fileFormat
     }));
-    
+
     console.log('✅ File logging enabled');
-  } catch (error) {
+  } catch (error: any) {
     console.log('ℹ️ File logging disabled:', error.message);
   }
 } else if (isVercel) {

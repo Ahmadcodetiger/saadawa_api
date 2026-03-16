@@ -56,11 +56,11 @@ export const config: Config = {
   nodeEnv: process.env.NODE_ENV || 'production',
   appUrl: process.env.APP_URL || 'http://10.71.55.112:5000',
   
-  // Database
-  mongoUri: process.env.MONGO_URI || 'mongodb://devahmad:saadawa@ac-rz6el1z-shard-00-00.2fs0ivb.mongodb.net:27017,ac-rz6el1z-shard-00-01.2fs0ivb.mongodb.net:27017,ac-rz6el1z-shard-00-02.2fs0ivb.mongodb.net:27017/?ssl=true&replicaSet=atlas-sy56gg-shard-0&authSource=admin&appName=saadawa',
+  // Database — MUST be set via environment variables (Vercel Dashboard or .env)
+  mongoUri: process.env.MONGO_URI || '',
   
   // JWT Authentication
-  jwtSecret: process.env.JWT_SECRET || 'your-secret-key',
+  jwtSecret: process.env.JWT_SECRET || '',
   jwtExpiry: process.env.JWT_EXPIRY || '24h',
   
   // OTP Configuration
