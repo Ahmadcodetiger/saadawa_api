@@ -1,16 +1,17 @@
 // config/bootstrap.ts
-// Loads .env, then creates config and logger, avoiding circular dependency.
 import { loadEnv } from './loadEnv.js';
 
-// 1. Load .env (no logger yet, so use console)
+// 1. Load .env
 await loadEnv();
 
-// 2. Now import config (process.env is ready)
+// 2. Import config
 import { config } from './env.js';
 
-// 3. Now import and create logger (config is ready)
+// 3. Create logger based on environment
 import path from 'path';
 import winston from 'winston';
+
+const isVercel = process.env.VERCEL === '1';
 
 const consoleFormat = winston.format.combine(
   winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
@@ -20,28 +21,56 @@ const consoleFormat = winston.format.combine(
     return `${timestamp} [${level}]: ${message} ${metaStr}`;
   })
 );
-const fileFormat = winston.format.combine(
-  winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
-  winston.format.errors({ stack: true }),
-  winston.format.json()
-);
 
-export const logger = winston.createLogger({
-  level: config.logLevel,
-  format: fileFormat,
-  transports: [
-    new winston.transports.Console({ format: consoleFormat }),
-    new winston.transports.File({ filename: path.join('logs', 'error.log'), level: 'error', format: fileFormat }),
-    new winston.transports.File({ filename: path.join('logs', 'warn.log'), level: 'warn', format: fileFormat }),
-    new winston.transports.File({ filename: path.join('logs', 'combined.log'), format: fileFormat }),
-    new winston.transports.File({ filename: path.join('logs', 'requests.log'), format: fileFormat }),
-  ],
-  exceptionHandlers: [
-    new winston.transports.File({ filename: path.join('logs', 'exceptions.log') })
-  ],
-  rejectionHandlers: [
-    new winston.transports.File({ filename: path.join('logs', 'rejections.log') })
-  ]
-});
+// Create logger based on environment
+const createLogger = () => {
+  // Base logger with console transport
+  const loggerTransports = [
+    new winston.transports.Console({ format: consoleFormat })
+  ];
 
+  // On Vercel, only use console
+  if (isVercel) {
+    console.log('☁️ Creating Vercel-optimized logger');
+    return winston.createLogger({
+      level: config.logLevel,
+      format: winston.format.json(),
+      transports: loggerTransports,
+    });
+  }
+
+  // On non-Vercel environments, add file transports
+  try {
+    const fs = require('fs');
+    const logsDir = 'logs';
+    
+    if (!fs.existsSync(logsDir)) {
+      fs.mkdirSync(logsDir, { recursive: true });
+    }
+    
+    const fileFormat = winston.format.combine(
+      winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
+      winston.format.errors({ stack: true }),
+      winston.format.json()
+    );
+
+    // Add all file transports
+    loggerTransports.push(
+      new winston.transports.File({ filename: path.join('logs', 'error.log'), level: 'error', format: fileFormat }),
+      new winston.transports.File({ filename: path.join('logs', 'combined.log'), format: fileFormat })
+    );
+    
+    console.log('📝 Full logging enabled');
+  } catch (error) {
+    console.log('⚠️ File logging unavailable:', error.message);
+  }
+
+  return winston.createLogger({
+    level: config.logLevel,
+    format: winston.format.json(),
+    transports: loggerTransports,
+  });
+};
+
+export const logger = createLogger();
 export { config };
