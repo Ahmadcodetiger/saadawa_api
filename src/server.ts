@@ -34,6 +34,11 @@ process.on('unhandledRejection', (reason, promise) => {
 // ============================================
 // Add database connection check middleware to app
 app.use(async (req, res, next) => {
+  // Skip database for health checks
+  if (req.path === '/health' || req.path === '/api/health/db' || req.path === '/api/debug/env') {
+    return next();
+  }
+  
   try {
     const status = getConnectionStatus();
     if (!status.isConnected) {
@@ -41,12 +46,13 @@ app.use(async (req, res, next) => {
       await connectDB();
     }
     next();
-  } catch (error) {
+  } catch (error: any) {
     logger.error('❌ Database connection failed:', error);
     res.status(503).json({
       success: false,
       message: 'Service temporarily unavailable',
-      error: 'Database connection failed'
+      error: 'Database connection failed',
+      details: error.message
     });
   }
 });
@@ -77,14 +83,26 @@ app.get('/api/health/db', async (req, res) => {
       res.json({
         success: true,
         message: 'Database reconnected',
-        status: newStatus
+        status: {
+          isConnected: newStatus.isConnected,
+          state: newStatus.state,
+          host: newStatus.host,
+          name: newStatus.name,
+          connectionAttempts: newStatus.connectionAttempts
+        }
       });
     } catch (error: any) {
       res.status(503).json({
         success: false,
         message: 'Database connection failed',
         error: error.message,
-        status
+        status: {
+          isConnected: status.isConnected,
+          state: status.state,
+          host: status.host,
+          name: status.name,
+          connectionAttempts: status.connectionAttempts
+        }
       });
     }
   }
@@ -103,8 +121,7 @@ app.get('/api/debug/env', (req, res) => {
       length: mongoUri.length,
       format: mongoUri.startsWith('mongodb+srv://') ? 'Atlas SRV' : 
               mongoUri.startsWith('mongodb://') ? 'Standard' : 'Unknown',
-      // Show first 10 and last 10 characters (masked)
-      preview: mongoUri.substring(0, 10) + '...' + mongoUri.substring(mongoUri.length - 10),
+      preview: mongoUri.substring(0, 15) + '...' + mongoUri.substring(mongoUri.length - 15),
       hasUsername: mongoUri.includes('@'),
       hasPassword: mongoUri.includes(':') && mongoUri.includes('@'),
     } : 'NOT SET',
@@ -159,8 +176,6 @@ async function startServer() {
   } catch (error: any) {
     console.error("❌ Server startup failed:", error.message);
     console.error("Error details:", error);
-    if (error.code) console.error("Error code:", error.code);
-    if (error.stack) console.error("Stack:", error.stack);
     process.exit(1);
   }
 }
