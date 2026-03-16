@@ -2,6 +2,7 @@
 import dotenv from "dotenv";
 import path from 'path';
 import { fileURLToPath } from 'url';
+import mongoose from 'mongoose'; // <-- ADD THIS IMPORT
 
 // Configure __dirname equivalent for ES modules
 const __filename = fileURLToPath(import.meta.url);
@@ -35,7 +36,7 @@ process.on('unhandledRejection', (reason, promise) => {
 // Add database connection check middleware to app
 app.use(async (req, res, next) => {
   // Skip database for health checks
-  if (req.path === '/health' || req.path === '/api/health/db' || req.path === '/api/debug/env') {
+  if (req.path === '/health' || req.path === '/api/health/db' || req.path === '/api/debug/env' || req.path === '/api/debug/mongodb') {
     return next();
   }
   
@@ -133,6 +134,46 @@ app.get('/api/debug/env', (req, res) => {
   });
 });
 
+// MongoDB debug endpoint
+app.get('/api/debug/mongodb', async (req, res) => {
+  const results: any = {
+    timestamp: new Date().toISOString(),
+    envVars: {
+      nodeEnv: process.env.NODE_ENV,
+      isVercel: process.env.VERCEL === '1',
+      mongoUriExists: !!process.env.MONGODB_URI,
+      mongoUriLength: process.env.MONGODB_URI?.length || 0,
+    },
+    connectionStatus: getConnectionStatus(),
+    attempts: []
+  };
+
+  // Try to connect
+  try {
+    results.attempts.push({ step: 'Attempting connection...' });
+    await connectDB();
+    
+    // Try a simple query
+    if (mongoose.connection.db) {
+      results.attempts.push({ step: 'Testing query...' });
+      const collections = await mongoose.connection.db.listCollections().toArray();
+      results.collections = collections.map(c => c.name);
+    }
+    
+    results.success = true;
+  } catch (error: any) {
+    results.success = false;
+    results.error = {
+      name: error.name,
+      message: error.message,
+      code: error.code,
+    };
+  }
+
+  results.finalStatus = getConnectionStatus();
+  res.json(results);
+});
+
 // ============================================
 // START SERVER (only for local development)
 // ============================================
@@ -184,45 +225,6 @@ async function startServer() {
 if (!process.env.VERCEL) {
   startServer();
 }
-// Add this to server.ts before exporting
-app.get('/api/debug/mongodb', async (req, res) => {
-  const results: any = {
-    timestamp: new Date().toISOString(),
-    envVars: {
-      nodeEnv: process.env.NODE_ENV,
-      isVercel: process.env.VERCEL === '1',
-      mongoUriExists: !!process.env.MONGODB_URI,
-      mongoUriLength: process.env.MONGODB_URI?.length || 0,
-    },
-    connectionStatus: getConnectionStatus(),
-    attempts: []
-  };
-
-  // Try to connect
-  try {
-    results.attempts.push({ step: 'Attempting connection...' });
-    await connectDB();
-    
-    // Try a simple query
-    if (mongoose.connection.db) {
-      results.attempts.push({ step: 'Testing query...' });
-      const collections = await mongoose.connection.db.listCollections().toArray();
-      results.collections = collections.map(c => c.name);
-    }
-    
-    results.success = true;
-  } catch (error: any) {
-    results.success = false;
-    results.error = {
-      name: error.name,
-      message: error.message,
-      code: error.code,
-    };
-  }
-
-  results.finalStatus = getConnectionStatus();
-  res.json(results);
-});
 
 // Export app for Vercel
 export default app;
