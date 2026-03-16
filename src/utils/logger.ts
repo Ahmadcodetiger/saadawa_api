@@ -1,89 +1,90 @@
 import path from 'path';
 import winston from 'winston';
-import fs from 'fs';
 
-interface LoggerOptions {
-  environment: 'development' | 'production' | 'test';
-  logLevel?: string;
-}
+// Log environment info immediately
+console.log('🔧 Logger initializing...');
+console.log('📋 Environment:', {
+  NODE_ENV: process.env.NODE_ENV,
+  VERCEL: process.env.VERCEL,
+  IS_VERCEL: process.env.VERCEL === '1',
+  PWD: process.cwd(),
+});
 
-const createLogger = (options: LoggerOptions) => {
-  const { environment, logLevel = 'info' } = options;
-  const isVercel = process.env.VERCEL === '1';
-  
-  const logger = winston.createLogger({
-    level: logLevel,
-    format: winston.format.combine(
-      winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
-      winston.format.errors({ stack: true }),
-      winston.format.splat(),
-      winston.format.json()
-    ),
-    defaultMeta: { service: 'api-service', environment },
-    transports: [
-      new winston.transports.Console({
-        format: winston.format.combine(
-          winston.format.colorize(),
-          winston.format.printf(({ timestamp, level, message, ...meta }) => {
-            return `${timestamp} [${level}]: ${message} ${
-              Object.keys(meta).length ? JSON.stringify(meta) : ''
-            }`;
-          })
-        ),
-      }),
-    ],
-  });
-
-  // Add file logging only in development and NOT on Vercel
-  if (environment === 'development' && !isVercel) {
-    try {
-      const logsDir = 'logs';
-      
-      // Create logs directory if it doesn't exist
-      if (!fs.existsSync(logsDir)) {
-        fs.mkdirSync(logsDir);
-      }
-      
-      // Error log
-      logger.add(new winston.transports.File({
-        filename: path.join(logsDir, 'error.log'),
-        level: 'error',
-        maxsize: 5242880, // 5MB
-        maxFiles: 5,
-      }));
-      
-      // Combined log
-      logger.add(new winston.transports.File({
-        filename: path.join(logsDir, 'combined.log'),
-        maxsize: 5242880, // 5MB
-        maxFiles: 5,
-      }));
-      
-      // Debug log for development
-      if (environment === 'development') {
-        logger.add(new winston.transports.File({
-          filename: path.join(logsDir, 'debug.log'),
-          level: 'debug',
-          maxsize: 5242880,
-          maxFiles: 3,
-        }));
-      }
-      
-      logger.info('📝 File logging enabled');
-    } catch (error) {
-      logger.warn('Could not enable file logging:', error.message);
-    }
-  } else if (environment === 'production') {
-    logger.info('☁️ Production mode - using console logging only');
+// Check if we can write to filesystem
+const canWriteToFS = () => {
+  try {
+    const fs = require('fs');
+    const testFile = '/tmp/test-write.txt';
+    fs.writeFileSync(testFile, 'test');
+    fs.unlinkSync(testFile);
+    return true;
+  } catch (error) {
+    return false;
   }
-
-  return logger;
 };
 
-// Create logger instance
-const logger = createLogger({
-  environment: (process.env.NODE_ENV as 'development' | 'production' | 'test') || 'development',
-  logLevel: process.env.LOG_LEVEL,
+const isVercel = process.env.VERCEL === '1';
+const canWrite = canWriteToFS();
+
+console.log('📝 Filesystem write access:', canWrite ? 'Yes' : 'No');
+
+// Create base logger with only console transport
+const logger = winston.createLogger({
+  level: process.env.LOG_LEVEL || 'info',
+  format: winston.format.combine(
+    winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
+    winston.format.errors({ stack: true }),
+    winston.format.splat(),
+    winston.format.printf(({ timestamp, level, message, ...meta }) => {
+      const metaStr = Object.keys(meta).length ? JSON.stringify(meta) : '';
+      return `${timestamp} [${level.toUpperCase()}]: ${message} ${metaStr}`;
+    })
+  ),
+  transports: [
+    new winston.transports.Console({
+      format: winston.format.combine(
+        winston.format.colorize(),
+        winston.format.simple()
+      ),
+    }),
+  ],
 });
+
+// ONLY try file transports if we're not on Vercel AND we can write
+if (!isVercel && canWrite) {
+  try {
+    const fs = require('fs');
+    const logsDir = 'logs';
+    
+    console.log('📁 Attempting to create logs directory...');
+    
+    // Create directory if it doesn't exist
+    if (!fs.existsSync(logsDir)) {
+      fs.mkdirSync(logsDir, { recursive: true });
+      console.log('✅ Logs directory created');
+    }
+    
+    // Add file transports
+    logger.add(new winston.transports.File({ 
+      filename: path.join(logsDir, 'error.log'), 
+      level: 'error',
+      maxsize: 5242880, // 5MB
+      maxFiles: 5,
+    }));
+    
+    logger.add(new winston.transports.File({ 
+      filename: path.join(logsDir, 'combined.log'),
+      maxsize: 5242880,
+      maxFiles: 5,
+    }));
+    
+    console.log('✅ File logging enabled');
+  } catch (error) {
+    console.log('❌ File logging failed:', error.message);
+    // Don't crash - just use console logging
+  }
+} else {
+  console.log('☁️ Using console-only logging (Vercel serverless mode)');
+}
 
 export default logger;
