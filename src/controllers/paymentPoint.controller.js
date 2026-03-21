@@ -1,13 +1,13 @@
-const paymentPointService = require('../services/paymentPoint.service');
-const User = require('../models/User');
-const Wallet = require('../models/Wallet');
+import User from '../models/User.js';
+import Wallet from '../models/Wallet.js';
+import Transaction from '../models/Transaction.js';
+import paymentPointService from '../services/paymentPoint.service.js';
 
 // Create virtual account for user
-exports.createVirtualAccount = async (req, res) => {
+export const createVirtualAccount = async (req, res) => {
   try {
     const userId = req.user.id;
     
-    // Get user details
     const user = await User.findById(userId);
     if (!user) {
       return res.status(404).json({
@@ -40,13 +40,14 @@ exports.createVirtualAccount = async (req, res) => {
     }
 
     // Save virtual account details to user
-    const bankAccount = result.data.bankAccounts[0]; // Get first bank account
+    const bankAccount = result.data.bankAccounts[0];
     user.virtualAccount = {
       accountNumber: bankAccount.accountNumber,
       accountName: bankAccount.accountName,
       bankName: bankAccount.bankName,
       bankCode: bankAccount.bankCode,
       customerId: result.data.customer.customer_id,
+      createdAt: new Date(),
     };
     await user.save();
 
@@ -65,7 +66,7 @@ exports.createVirtualAccount = async (req, res) => {
 };
 
 // Get user's virtual account
-exports.getVirtualAccount = async (req, res) => {
+export const getVirtualAccount = async (req, res) => {
   try {
     const userId = req.user.id;
     const user = await User.findById(userId);
@@ -92,22 +93,147 @@ exports.getVirtualAccount = async (req, res) => {
   }
 };
 
-// Webhook for payment notifications
-exports.paymentWebhook = async (req, res) => {
+// Webhook for PaymentPoint payment notifications
+export const paymentWebhook = async (req, res) => {
+  let transactionId = null;
+  
   try {
+    // Log the incoming webhook
+    console.log('📡 PaymentPoint webhook received at:', new Date().toISOString());
+    console.log('📡 Headers:', JSON.stringify(req.headers, null, 2));
+    console.log('📡 Body:', JSON.stringify(req.body, null, 2));
+
     const payload = req.body;
     
-    // Process webhook
-    const result = await paymentPointService.handleWebhook(payload);
+    // Try to extract payment details (adjust based on actual PaymentPoint structure)
+    // Common structures from different payment providers
+    let accountNumber, amount, reference, customerEmail, narration, status, event;
     
-    if (result.success) {
-      // Update wallet balance based on payment
-      // Implementation depends on your payment flow
+    // Check for different possible payload structures
+    if (payload.data) {
+      // Structure: { data: { ... } }
+      accountNumber = payload.data.accountNumber || payload.data.account_number;
+      amount = payload.data.amount;
+      reference = payload.data.reference || payload.data.transactionReference;
+      customerEmail = payload.data.customerEmail || payload.data.email;
+      narration = payload.data.narration || payload.data.description;
+      status = payload.data.status;
+      event = payload.event;
+    } else {
+      // Flat structure
+      accountNumber = payload.accountNumber || payload.account_number;
+      amount = payload.amount;
+      reference = payload.reference || payload.transactionReference;
+      customerEmail = payload.customerEmail || payload.email;
+      narration = payload.narration || payload.description;
+      status = payload.status;
+      event = payload.event;
     }
     
-    return res.status(200).json({ success: true });
+    console.log('📋 Parsed payment data:', {
+      accountNumber,
+      amount,
+      reference,
+      customerEmail,
+      narration,
+      status,
+      event
+    });
+    
+    // Process only successful payments
+    const isSuccess = status === 'successful' || status === 'success' || event === 'payment.success';
+    
+    if (isSuccess && amount > 0 && accountNumber) {
+      // Find user by virtual account number
+      const user = await User.findOne({ 
+        'virtualAccount.accountNumber': accountNumber 
+      });
+      
+      if (!user) {
+        console.error(`❌ User not found for account: ${accountNumber}`);
+        return res.status(200).json({ 
+          success: true, 
+          message: 'User not found but acknowledged' 
+        });
+      }
+      
+      // Check if transaction already processed (prevent duplicates)
+      transactionId = reference || `PAYMENT_${Date.now()}_${accountNumber}`;
+      const existingTransaction = await Transaction.findOne({ 
+        reference_number: transactionId 
+      });
+      
+      if (existingTransaction) {
+        console.log(`⚠️ Transaction ${transactionId} already processed, skipping`);
+        return res.status(200).json({ 
+          success: true, 
+          message: 'Already processed' 
+        });
+      }
+      
+      // Find or create wallet
+      let wallet = await Wallet.findOne({ user_id: user._id });
+      if (!wallet) {
+        wallet = new Wallet({
+          user_id: user._id,
+          balance: 0,
+          currency: 'NGN'
+        });
+      }
+      
+      // Update wallet balance
+      const previousBalance = wallet.balance;
+      wallet.balance += amount;
+      await wallet.save();
+      
+      // Create transaction record
+      const transaction = new Transaction({
+        user_id: user._id,
+        wallet_id: wallet._id,
+        type: 'wallet_topup',
+        amount: amount,
+        fee: 0,
+        total_charged: amount,
+        status: 'successful',
+        reference_number: transactionId,
+        description: narration || 'Wallet funding via PaymentPoint',
+        payment_method: 'virtual_account',
+        destination_account: accountNumber,
+        created_at: new Date(),
+        updated_at: new Date()
+      });
+      await transaction.save();
+      
+      console.log(`✅ Wallet credited: ${user.email}`);
+      console.log(`💰 Amount: ₦${amount}`);
+      console.log(`📈 Previous balance: ₦${previousBalance}`);
+      console.log(`📊 New balance: ₦${wallet.balance}`);
+      console.log(`🆔 Transaction ID: ${transaction._id}`);
+      
+      // Optional: Send notification to user
+      // await sendEmailNotification(user.email, amount, wallet.balance);
+      // await sendPushNotification(user.deviceToken, amount);
+    } else {
+      console.log(`ℹ️ Skipping non-payment or failed event: ${event}, status: ${status}`);
+    }
+    
+    // Always return 200 to acknowledge receipt
+    return res.status(200).json({ 
+      success: true, 
+      message: 'Webhook received successfully',
+      timestamp: new Date().toISOString()
+    });
+    
   } catch (error) {
-    console.error('Webhook error:', error);
-    return res.status(500).json({ success: false });
+    console.error('❌ Webhook error:', error);
+    console.error('❌ Error stack:', error.stack);
+    
+    // Still return 200 to avoid retries from PaymentPoint
+    return res.status(200).json({ 
+      success: false, 
+      message: 'Webhook received but processing failed',
+      error: error.message,
+      timestamp: new Date().toISOString()
+    });
   }
 };
