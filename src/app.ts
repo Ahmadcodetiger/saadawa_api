@@ -7,6 +7,7 @@ import authRoutes from "./routes/auth.routes.js";
 import billpaymentRoutes from "./routes/billpayment.routes.js";
 import notificationsRoutes from "./routes/notifications.routes.js";
 import paymentRoutes from "./routes/payment.routes.js";
+import paymentPointRoutes from "./routes/paymentPoint.routes.js"; // ADD THIS IMPORT
 import promotionsRoutes from "./routes/promotions.routes.js";
 import supportRoutes from "./routes/support.routes.js";
 import supportContentRoutes from "./routes/support_content.routes.js";
@@ -54,13 +55,14 @@ app.use("/api/promotions", promotionsRoutes);
 app.use("/api/support", supportRoutes);
 app.use("/api/wallet", walletRoutes);
 app.use("/api/payment", paymentRoutes);
+app.use("/api/payment-point", paymentPointRoutes); // ADD THIS ROUTE
 app.use("/api/billpayment", billpaymentRoutes);
 app.use("/api/support-content", supportContentRoutes);
 
 
 // Root route
 app.get("/", (req: Request, res: Response) => {
-  res.send("✅ Connecta Backend (MongoDB) is running...");
+  res.send("✅ SAADAWA Backend (MongoDB) is running...");
 });
 
 // Health check
