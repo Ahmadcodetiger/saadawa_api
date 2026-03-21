@@ -1,4 +1,4 @@
-const axios = require('axios');
+import axios from 'axios';
 
 class PaymentPointService {
   constructor() {
@@ -47,43 +47,6 @@ class PaymentPointService {
       };
     }
   }
-
-  // Get Virtual Account Balance (if needed)
-  async getVirtualAccountBalance(accountNumber) {
-    try {
-      const headers = {
-        'Authorization': `Bearer ${this.apiSecret}`,
-        'Content-Type': 'application/json',
-        'api-key': this.apiKey,
-      };
-
-      const response = await axios.get(
-        `${this.baseURL}/getAccountBalance/${accountNumber}`,
-        { headers }
-      );
-
-      return {
-        success: true,
-        data: response.data,
-      };
-    } catch (error) {
-      console.error('❌ Get balance error:', error.response?.data || error.message);
-      return {
-        success: false,
-        message: error.response?.data?.message || 'Failed to get balance',
-      };
-    }
-  }
-
-  // Webhook handler for payment notifications
-  async handleWebhook(payload) {
-    // Verify webhook signature (implement based on PaymentPoint docs)
-    // Process payment notification
-    console.log('📡 Webhook received:', payload);
-    
-    // Update user's wallet balance based on the payment
-    return { success: true };
-  }
 }
 
-module.exports = new PaymentPointService();
+export default new PaymentPointService();
