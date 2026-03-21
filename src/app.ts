@@ -26,7 +26,11 @@ const app = express();
 // CORS Configuration - Allow ALL origins
 app.use(cors()); // Allow all origins (default)
 
-app.use(['/api/payment/webhook', '/api/payment/payrant/webhook'], express.raw({ type: 'application/json' }));
+// Add PaymentPoint webhook to the raw body parser
+app.use(
+  ['/api/payment/webhook', '/api/payment/payrant/webhook', '/api/payment-point/webhook'], 
+  express.raw({ type: 'application/json' })
+);
 
 // Parse JSON for all other routes
 app.use(express.json());
