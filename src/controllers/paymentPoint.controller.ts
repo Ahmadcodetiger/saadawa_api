@@ -1,7 +1,7 @@
-import User from '../models/User.js';
-import Wallet from '../models/Wallet.js';
-import Transaction from '../models/Transaction.js';
-import paymentPointService from '../services/paymentPoint.service.js';
+import User from '../models/User.ts';
+import Wallet from '../models/Wallet.ts';
+import Transaction from '../models/Transaction.ts';
+import paymentPointService from '../services/paymentPoint.service.ts';
 
 // Create virtual account for user
 export const createVirtualAccount = async (req, res) => {
