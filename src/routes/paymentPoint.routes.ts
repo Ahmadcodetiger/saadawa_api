@@ -1,7 +1,6 @@
 import express from 'express';
-import authMiddleware from '../middleware/auth.middleware.ts';
-import * as paymentPointController from '../controllers/paymentPoint.controller.ts';
-
+import authMiddleware from '../middleware/auth.middleware.js';  // Add .js extension
+import * as paymentPointController from '../controllers/paymentPoint.controller.js';  // Add .js extension
 const router = express.Router();
 
 // Protected routes (require authentication)
