@@ -2,22 +2,22 @@ import cors from "cors";
 import dotenv from "dotenv";
 import express, { NextFunction, Request, Response } from "express";
 
-import adminRoutes from "./routes/admin.routes.js";
-import authRoutes from "./routes/auth.routes.js";
-import billpaymentRoutes from "./routes/billpayment.routes.js";
-import notificationsRoutes from "./routes/notifications.routes.js";
-import paymentRoutes from "./routes/payment.routes.js";
-import paymentPointRoutes from './routes/paymentPoint.routes.js';
-import promotionsRoutes from "./routes/promotions.routes.js";
-import supportRoutes from "./routes/support.routes.js";
-import supportContentRoutes from "./routes/support_content.routes.js";
-import transactionsRoutes from "./routes/transactions.routes.js";
-import usersRoutes from "./routes/users.routes.js";
-import walletRoutes from "./routes/wallet.routes.js";
+import adminRoutes from "./routes/admin.routes.ts";
+import authRoutes from "./routes/auth.routes.ts";
+import billpaymentRoutes from "./routes/billpayment.routes.ts";
+import notificationsRoutes from "./routes/notifications.routes.ts";
+import paymentRoutes from "./routes/payment.routes.ts";
+import paymentPointRoutes from './routes/paymentPoint.routes.ts';
+import promotionsRoutes from "./routes/promotions.routes.ts";
+import supportRoutes from "./routes/support.routes.ts";
+import supportContentRoutes from "./routes/support_content.routes.ts";
+import transactionsRoutes from "./routes/transactions.routes.ts";
+import usersRoutes from "./routes/users.routes.ts";
+import walletRoutes from "./routes/wallet.routes.ts";
 
 // Import logging middleware
 import { logger } from "./config/bootstrap.js";
-import { detailedRequestLogger, errorLogger, requestLogger } from "./middleware/logger.middleware.js";
+import { detailedRequestLogger, errorLogger, requestLogger } from "./middleware/logger.middleware.ts";
 
 dotenv.config();
 
@@ -77,7 +77,7 @@ app.get("/health", (req: Request, res: Response) => {
 // Test TopUpMate service
 app.get("/api/test-topupmate", async (req: Request, res: Response) => {
   try {
-    const { default: topupmateService } = await import("./services/topupmate.service.js");
+    const { default: topupmateService } = await import("./services/topupmate.service.ts");
     const networks = await topupmateService.getNetworks();
     res.json({ success: true, message: "TopUpMate service is working!", data: networks });
   } catch (error: any) {
