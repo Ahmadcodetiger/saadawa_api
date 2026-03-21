@@ -1,8 +1,8 @@
-import User from '../models/User.ts';
-import Wallet from '../models/Wallet.ts';
-import Transaction from '../models/Transaction.ts';
-import paymentPointService from '../services/paymentPoint.service.ts';
-
+import { Request, Response } from 'express';
+import User from '../models/User.js';  // Add .js extension
+import Wallet from '../models/Wallet.js';  // Add .js extension
+import Transaction from '../models/Transaction.js';  // Add .js extension
+import paymentPointService from '../services/paymentPoint.service.js';  // Add .js extension
 // Create virtual account for user
 export const createVirtualAccount = async (req, res) => {
   try {
