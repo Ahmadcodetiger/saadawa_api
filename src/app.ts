@@ -7,7 +7,7 @@ import authRoutes from "./routes/auth.routes.js";
 import billpaymentRoutes from "./routes/billpayment.routes.js";
 import notificationsRoutes from "./routes/notifications.routes.js";
 import paymentRoutes from "./routes/payment.routes.js";
-import paymentPointRoutes from "./routes/paymentPoint.routes.js"; // ADD THIS IMPORT
+import paymentPointRoutes from './routes/paymentPoint.routes.js';
 import promotionsRoutes from "./routes/promotions.routes.js";
 import supportRoutes from "./routes/support.routes.js";
 import supportContentRoutes from "./routes/support_content.routes.js";
