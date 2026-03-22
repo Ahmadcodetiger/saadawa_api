@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import mongoose from 'mongoose';
+import mongoose from 'mongoose';  // Only ONE import
 import { User } from '../models/user.model.js';
 import VirtualAccount from '../models/VirtualAccount.js';
 import paymentPointService from '../services/paymentPoint.service.js';
