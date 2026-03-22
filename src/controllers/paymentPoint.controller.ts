@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { User } from '../models/User.js';  // Use .js extension, not .Ts
+import { User } from '../models/user.model.js';  // Use user.model.js (lowercase)
 import VirtualAccount from '../models/VirtualAccount.js';  // Use .js extension
 import paymentPointService from '../services/paymentPoint.service.js';
 import mongoose from 'mongoose';
