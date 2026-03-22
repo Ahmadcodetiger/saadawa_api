@@ -1,10 +1,9 @@
 // controllers/payment.controller.ts
-import { Request, Response } from 'express';
-import { Transaction, User, VirtualAccount, Wallet } from '../models/index.js';
-import { MonnifyService } from '../services/monnify.service.js';
-import { PaystackService } from '../services/paystack.service.js';
+import { Response } from 'express';
+import mongoose from 'mongoose';
 import { AuthRequest } from '../types/index.js';
-import { ApiResponse } from '../utils/response.js';
+import { User } from '../models/user.model.js';
+import VirtualAccount from '../models/VirtualAccount.js';
 
 // Initialize services
 const monnifyService = new MonnifyService();
