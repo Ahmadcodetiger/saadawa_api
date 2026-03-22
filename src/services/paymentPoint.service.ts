@@ -1,15 +1,19 @@
 import axios from 'axios';
 
 class PaymentPointService {
+  private baseURL: string;
+  private apiKey: string;
+  private apiSecret: string;
+  private businessId: string;
+
   constructor() {
     this.baseURL = 'https://api.paymentpoint.co/api/v1';
-    this.apiKey = process.env.PAYMENTPOINT_API_KEY;
-    this.apiSecret = process.env.PAYMENTPOINT_API_SECRET;
-    this.businessId = process.env.PAYMENTPOINT_BUSINESS_ID;
+    this.apiKey = process.env.PAYMENTPOINT_API_KEY || '';
+    this.apiSecret = process.env.PAYMENTPOINT_API_SECRET || '';
+    this.businessId = process.env.PAYMENTPOINT_BUSINESS_ID || '';
   }
 
-  // Create Virtual Account
-  async createVirtualAccount(userData) {
+  async createVirtualAccount(userData: { email: string; name: string; phoneNumber: string }) {
     try {
       const headers = {
         'Authorization': `Bearer ${this.apiSecret}`,
@@ -39,7 +43,7 @@ class PaymentPointService {
         success: true,
         data: response.data,
       };
-    } catch (error) {
+    } catch (error: any) {
       console.error('❌ PaymentPoint error:', error.response?.data || error.message);
       return {
         success: false,
