@@ -1,13 +1,8 @@
 import { Request, Response } from 'express';
 import mongoose from 'mongoose';
 import { User } from '../models/user.model.js';
-import VirtualAccount from '../models/VirtualAccount.js';
+import VirtualAccount from '../models/VirtualAccount.js';  // VirtualAccount.js (capital V)
 import paymentPointService from '../services/paymentPoint.service.js';
-
-// Extend Express Request type to include user
-interface AuthRequest extends Request {
-  user?: IUser;
-}
 
 export const createVirtualAccount = async (req: Request, res: Response) => {
   try {
@@ -69,12 +64,9 @@ export const createVirtualAccount = async (req: Request, res: Response) => {
       status: 'active',
       metadata: {
         virtualAccountName: result.data.customer.customer_name,
-        customerId: result.data.customer.customer_id,
-        customerEmail: result.data.customer.customer_email,
-        customerPhone: result.data.customer.customer_phone_number,
-        businessName: result.data.business?.business_name,
-        bankCode: bankAccount.bankCode,
-        reservedAccountId: bankAccount.Reserved_Account_Id
+        virtualAccountNo: bankAccount.accountNumber,
+        identityType: 'NIN',
+        licenseNumber: result.data.customer.customer_id
       }
     });
     
