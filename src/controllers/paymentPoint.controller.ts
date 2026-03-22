@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
 import mongoose from 'mongoose';
 import { User } from '../models/user.model.js';
-import VirtualAccount from '../models/VirtualAccount.js';  // VirtualAccount.js (capital V)
+import VirtualAccount from '../models/VirtualAccount.js';
 import paymentPointService from '../services/paymentPoint.service.js';
 
 export const createVirtualAccount = async (req: Request, res: Response) => {
@@ -16,7 +16,7 @@ export const createVirtualAccount = async (req: Request, res: Response) => {
       });
     }
 
-    // Check if user already has a PaymentPoint virtual account
+    // Check if user already has a virtual account (provider will default to paymentpoint)
     const existingAccount = await VirtualAccount.findOne({
       user: userId,
       provider: 'paymentpoint'
@@ -53,13 +53,13 @@ export const createVirtualAccount = async (req: Request, res: Response) => {
 
     const bankAccount = result.data.bankAccounts[0];
     
-    // Save virtual account to database
+    // Save virtual account to database - provider will default to 'paymentpoint'
     const virtualAccount = new VirtualAccount({
       user: userId,
       accountNumber: bankAccount.accountNumber,
       accountName: bankAccount.accountName,
       bankName: bankAccount.bankName,
-      provider: 'paymentpoint',
+      // provider not specified - will use default 'paymentpoint'
       reference: result.data.customer.customer_id,
       status: 'active',
       metadata: {
@@ -72,24 +72,15 @@ export const createVirtualAccount = async (req: Request, res: Response) => {
     
     await virtualAccount.save();
 
-    // Also update user's virtual_account field for backward compatibility
-    if (user.virtual_account) {
-      user.virtual_account.account_number = bankAccount.accountNumber;
-      user.virtual_account.account_name = bankAccount.accountName;
-      user.virtual_account.bank_name = bankAccount.bankName;
-      user.virtual_account.account_reference = result.data.customer.customer_id;
-      user.virtual_account.provider = 'paymentpoint';
-      user.virtual_account.status = 'active';
-    } else {
-      user.virtual_account = {
-        account_number: bankAccount.accountNumber,
-        account_name: bankAccount.accountName,
-        bank_name: bankAccount.bankName,
-        account_reference: result.data.customer.customer_id,
-        provider: 'paymentpoint',
-        status: 'active'
-      };
-    }
+    // Also update user's virtual_account field
+    user.virtual_account = {
+      account_number: bankAccount.accountNumber,
+      account_name: bankAccount.accountName,
+      bank_name: bankAccount.bankName,
+      account_reference: result.data.customer.customer_id,
+      provider: 'paymentpoint',
+      status: 'active'
+    };
     await user.save();
 
     return res.status(201).json({
