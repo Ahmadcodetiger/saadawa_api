@@ -1,5 +1,5 @@
 import express from 'express';
-import { authMiddleware } from '../middleware/auth.middleware.js';  // Named import with curly braces
+import { authMiddleware } from '../middleware/auth.middleware.js';
 import * as paymentPointController from '../controllers/paymentPoint.controller.js';
 
 const router = express.Router();
@@ -7,13 +7,13 @@ const router = express.Router();
 // Protected routes (require authentication)
 router.post(
   '/create-virtual-account',
-  authMiddleware,  // Use the named export
+  authMiddleware,
   paymentPointController.createVirtualAccount
 );
 
 router.get(
   '/virtual-account',
-  authMiddleware,  // Use the named export
+  authMiddleware,
   paymentPointController.getVirtualAccount
 );
 
@@ -28,6 +28,11 @@ router.get('/test', (req, res) => {
   res.json({
     success: true,
     message: 'PaymentPoint routes are working',
+    endpoints: {
+      createVirtualAccount: 'POST /api/payment-point/create-virtual-account',
+      getVirtualAccount: 'GET /api/payment-point/virtual-account',
+      webhook: 'POST /api/payment-point/webhook'
+    }
   });
 });
 
