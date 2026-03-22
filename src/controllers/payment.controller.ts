@@ -3,8 +3,8 @@ import mongoose from 'mongoose';
 import { AuthRequest } from '../types/index.js';
 import { User } from '../models/user.model.js';
 import VirtualAccount from '../models/VirtualAccount.js';
-import { Wallet } from '../models/wallet.model.js';  // Named import from wallet.model.js
-import { Transaction } from '../models/transaction.model.js';  // Assuming you have transaction.model.ts
+import { Wallet } from '../models/wallet.model.js';
+import { Transaction } from '../models/transaction.model.js';
 import { ApiResponse } from '../utils/response.js';
 
 export const createVirtualAccount = async (req: AuthRequest, res: Response) => {
