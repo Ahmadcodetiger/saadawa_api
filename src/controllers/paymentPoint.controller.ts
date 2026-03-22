@@ -4,6 +4,11 @@ import { User } from '../models/user.model.js';
 import VirtualAccount from '../models/VirtualAccount.js';
 import paymentPointService from '../services/paymentPoint.service.js';
 
+// Extend Express Request type to include user
+interface AuthRequest extends Request {
+  user?: IUser;
+}
+
 export const createVirtualAccount = async (req: Request, res: Response) => {
   try {
     const userId = req.user.id;
