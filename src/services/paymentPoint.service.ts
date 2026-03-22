@@ -25,7 +25,7 @@ class PaymentPointService {
         email: userData.email,
         name: userData.name,
         phoneNumber: userData.phoneNumber,
-        bankCode: ['20946', '20897'], // Palmpay and Opay
+        bankCode: ['20946', '20897'],
         businessId: this.businessId,
       };
 
