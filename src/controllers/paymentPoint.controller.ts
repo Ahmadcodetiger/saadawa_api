@@ -1,13 +1,15 @@
 import { Request, Response } from 'express';
-import User from '../models/User.js';  // Add .js extension
-import Wallet from '../models/Wallet.js';  // Add .js extension
-import Transaction from '../models/Transaction.js';  // Add .js extension
-import paymentPointService from '../services/paymentPoint.service.js';  // Add .js extension
+import { User } from '../models/User.js';
+import VirtualAccount from '../models/VirtualAccount.js';
+import paymentPointService from '../services/paymentPoint.service.js';
+import mongoose from 'mongoose';
+
 // Create virtual account for user
-export const createVirtualAccount = async (req, res) => {
+export const createVirtualAccount = async (req: Request, res: Response) => {
   try {
     const userId = req.user.id;
     
+    // Check if user exists
     const user = await User.findById(userId);
     if (!user) {
       return res.status(404).json({
@@ -16,12 +18,24 @@ export const createVirtualAccount = async (req, res) => {
       });
     }
 
-    // Check if user already has a virtual account
-    if (user.virtualAccount) {
+    // Check if user already has a PaymentPoint virtual account
+    const existingAccount = await VirtualAccount.findOne({
+      user: userId,
+      provider: 'paymentpoint'
+    });
+
+    if (existingAccount) {
       return res.status(200).json({
         success: true,
         message: 'Virtual account already exists',
-        data: user.virtualAccount,
+        data: {
+          accountNumber: existingAccount.accountNumber,
+          accountName: existingAccount.accountName,
+          bankName: existingAccount.bankName,
+          reference: existingAccount.reference,
+          provider: existingAccount.provider,
+          status: existingAccount.status
+        },
       });
     }
 
@@ -39,22 +53,53 @@ export const createVirtualAccount = async (req, res) => {
       });
     }
 
-    // Save virtual account details to user
+    // Get the first bank account from response
     const bankAccount = result.data.bankAccounts[0];
-    user.virtualAccount = {
+    
+    // Save virtual account to database
+    const virtualAccount = new VirtualAccount({
+      user: userId,
       accountNumber: bankAccount.accountNumber,
       accountName: bankAccount.accountName,
       bankName: bankAccount.bankName,
-      bankCode: bankAccount.bankCode,
-      customerId: result.data.customer.customer_id,
-      createdAt: new Date(),
+      provider: 'paymentpoint',
+      reference: result.data.customer.customer_id,
+      status: 'active',
+      metadata: {
+        virtualAccountName: result.data.customer.customer_name,
+        customerId: result.data.customer.customer_id,
+        customerEmail: result.data.customer.customer_email,
+        customerPhone: result.data.customer.customer_phone_number,
+        businessName: result.data.business?.business_name,
+        bankCode: bankAccount.bankCode,
+        reservedAccountId: bankAccount.Reserved_Account_Id
+      }
+    });
+    
+    await virtualAccount.save();
+
+    // Also update user's virtual_account field for backward compatibility
+    user.virtual_account = {
+      account_number: bankAccount.accountNumber,
+      account_name: bankAccount.accountName,
+      bank_name: bankAccount.bankName,
+      account_reference: result.data.customer.customer_id,
+      provider: 'paymentpoint',
+      status: 'active'
     };
     await user.save();
 
     return res.status(201).json({
       success: true,
       message: 'Virtual account created successfully',
-      data: user.virtualAccount,
+      data: {
+        accountNumber: virtualAccount.accountNumber,
+        accountName: virtualAccount.accountName,
+        bankName: virtualAccount.bankName,
+        reference: virtualAccount.reference,
+        provider: virtualAccount.provider,
+        status: virtualAccount.status
+      },
     });
   } catch (error) {
     console.error('Create virtual account error:', error);
@@ -66,12 +111,17 @@ export const createVirtualAccount = async (req, res) => {
 };
 
 // Get user's virtual account
-export const getVirtualAccount = async (req, res) => {
+export const getVirtualAccount = async (req: Request, res: Response) => {
   try {
     const userId = req.user.id;
-    const user = await User.findById(userId);
+    
+    // Find virtual account
+    const virtualAccount = await VirtualAccount.findOne({
+      user: userId,
+      provider: 'paymentpoint'
+    });
 
-    if (!user || !user.virtualAccount) {
+    if (!virtualAccount) {
       return res.status(404).json({
         success: false,
         message: 'Virtual account not found',
@@ -82,7 +132,14 @@ export const getVirtualAccount = async (req, res) => {
     return res.status(200).json({
       success: true,
       message: 'Virtual account retrieved',
-      data: user.virtualAccount,
+      data: {
+        accountNumber: virtualAccount.accountNumber,
+        accountName: virtualAccount.accountName,
+        bankName: virtualAccount.bankName,
+        reference: virtualAccount.reference,
+        provider: virtualAccount.provider,
+        status: virtualAccount.status
+      },
     });
   } catch (error) {
     console.error('Get virtual account error:', error);
@@ -94,84 +151,54 @@ export const getVirtualAccount = async (req, res) => {
 };
 
 // Webhook for PaymentPoint payment notifications
-export const paymentWebhook = async (req, res) => {
-  let transactionId = null;
-  
+export const paymentWebhook = async (req: Request, res: Response) => {
   try {
-    // Log the incoming webhook
-    console.log('📡 PaymentPoint webhook received at:', new Date().toISOString());
-    console.log('📡 Headers:', JSON.stringify(req.headers, null, 2));
+    console.log('📡 PaymentPoint webhook received:', new Date().toISOString());
     console.log('📡 Body:', JSON.stringify(req.body, null, 2));
 
     const payload = req.body;
     
-    // Try to extract payment details (adjust based on actual PaymentPoint structure)
-    // Common structures from different payment providers
-    let accountNumber, amount, reference, customerEmail, narration, status, event;
+    // Parse payment details based on PaymentPoint structure
+    let accountNumber: string;
+    let amount: number;
+    let reference: string;
+    let status: string;
     
-    // Check for different possible payload structures
     if (payload.data) {
-      // Structure: { data: { ... } }
       accountNumber = payload.data.accountNumber || payload.data.account_number;
       amount = payload.data.amount;
       reference = payload.data.reference || payload.data.transactionReference;
-      customerEmail = payload.data.customerEmail || payload.data.email;
-      narration = payload.data.narration || payload.data.description;
       status = payload.data.status;
-      event = payload.event;
     } else {
-      // Flat structure
       accountNumber = payload.accountNumber || payload.account_number;
       amount = payload.amount;
       reference = payload.reference || payload.transactionReference;
-      customerEmail = payload.customerEmail || payload.email;
-      narration = payload.narration || payload.description;
       status = payload.status;
-      event = payload.event;
     }
     
-    console.log('📋 Parsed payment data:', {
-      accountNumber,
-      amount,
-      reference,
-      customerEmail,
-      narration,
-      status,
-      event
-    });
-    
     // Process only successful payments
-    const isSuccess = status === 'successful' || status === 'success' || event === 'payment.success';
+    const isSuccess = status === 'successful' || status === 'success' || payload.event === 'payment.success';
     
     if (isSuccess && amount > 0 && accountNumber) {
-      // Find user by virtual account number
-      const user = await User.findOne({ 
-        'virtualAccount.accountNumber': accountNumber 
+      // Find virtual account by account number
+      const virtualAccount = await VirtualAccount.findOne({ 
+        accountNumber: accountNumber 
       });
       
-      if (!user) {
-        console.error(`❌ User not found for account: ${accountNumber}`);
-        return res.status(200).json({ 
-          success: true, 
-          message: 'User not found but acknowledged' 
-        });
+      if (!virtualAccount) {
+        console.log(`Virtual account not found for account: ${accountNumber}`);
+        return res.status(200).json({ success: true, message: 'Account not found' });
       }
       
-      // Check if transaction already processed (prevent duplicates)
-      transactionId = reference || `PAYMENT_${Date.now()}_${accountNumber}`;
-      const existingTransaction = await Transaction.findOne({ 
-        reference_number: transactionId 
-      });
-      
-      if (existingTransaction) {
-        console.log(`⚠️ Transaction ${transactionId} already processed, skipping`);
-        return res.status(200).json({ 
-          success: true, 
-          message: 'Already processed' 
-        });
+      // Find user
+      const user = await User.findById(virtualAccount.user);
+      if (!user) {
+        console.log(`User not found for account: ${accountNumber}`);
+        return res.status(200).json({ success: true, message: 'User not found' });
       }
       
       // Find or create wallet
+      const Wallet = mongoose.model('Wallet');
       let wallet = await Wallet.findOne({ user_id: user._id });
       if (!wallet) {
         wallet = new Wallet({
@@ -187,6 +214,7 @@ export const paymentWebhook = async (req, res) => {
       await wallet.save();
       
       // Create transaction record
+      const Transaction = mongoose.model('Transaction');
       const transaction = new Transaction({
         user_id: user._id,
         wallet_id: wallet._id,
@@ -195,8 +223,8 @@ export const paymentWebhook = async (req, res) => {
         fee: 0,
         total_charged: amount,
         status: 'successful',
-        reference_number: transactionId,
-        description: narration || 'Wallet funding via PaymentPoint',
+        reference_number: reference,
+        description: 'Wallet funding via PaymentPoint',
         payment_method: 'virtual_account',
         destination_account: accountNumber,
         created_at: new Date(),
@@ -204,36 +232,13 @@ export const paymentWebhook = async (req, res) => {
       });
       await transaction.save();
       
-      console.log(`✅ Wallet credited: ${user.email}`);
-      console.log(`💰 Amount: ₦${amount}`);
-      console.log(`📈 Previous balance: ₦${previousBalance}`);
-      console.log(`📊 New balance: ₦${wallet.balance}`);
-      console.log(`🆔 Transaction ID: ${transaction._id}`);
-      
-      // Optional: Send notification to user
-      // await sendEmailNotification(user.email, amount, wallet.balance);
-      // await sendPushNotification(user.deviceToken, amount);
-    } else {
-      console.log(`ℹ️ Skipping non-payment or failed event: ${event}, status: ${status}`);
+      console.log(`✅ Wallet credited: ${user.email} - ₦${amount}`);
+      console.log(`💰 Previous: ₦${previousBalance} → New: ₦${wallet.balance}`);
     }
     
-    // Always return 200 to acknowledge receipt
-    return res.status(200).json({ 
-      success: true, 
-      message: 'Webhook received successfully',
-      timestamp: new Date().toISOString()
-    });
-    
+    return res.status(200).json({ success: true, message: 'Webhook processed' });
   } catch (error) {
-    console.error('❌ Webhook error:', error);
-    console.error('❌ Error stack:', error.stack);
-    
-    // Still return 200 to avoid retries from PaymentPoint
-    return res.status(200).json({ 
-      success: false, 
-      message: 'Webhook received but processing failed',
-      error: error.message,
-      timestamp: new Date().toISOString()
-    });
+    console.error('Webhook error:', error);
+    return res.status(200).json({ success: true, message: 'Webhook received' });
   }
 };
