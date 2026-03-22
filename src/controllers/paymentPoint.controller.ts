@@ -1,4 +1,4 @@
-import { Request, Response } from 'express';
+import { Response } from 'express';
 import mongoose from 'mongoose';
 import { AuthRequest } from '../types/index.js';
 import { User } from '../models/user.model.js';
@@ -25,7 +25,95 @@ export const createVirtualAccount = async (req: AuthRequest, res: Response) => {
       });
     }
 
-    // ... rest of the code
+    // Check if user already has a virtual account
+    const existingAccount = await VirtualAccount.findOne({
+      user: new mongoose.Types.ObjectId(userId),
+      provider: 'paymentpoint'
+    });
+
+    if (existingAccount) {
+      return res.status(200).json({
+        success: true,
+        message: 'Virtual account already exists',
+        data: {
+          accountNumber: existingAccount.accountNumber,
+          accountName: existingAccount.accountName,
+          bankName: existingAccount.bankName,
+          reference: existingAccount.reference,
+          provider: existingAccount.provider,
+          status: existingAccount.status
+        },
+      });
+    }
+
+    // Create virtual account with PaymentPoint
+    const result = await paymentPointService.createVirtualAccount({
+      email: user.email,
+      name: `${user.first_name} ${user.last_name}`,
+      phoneNumber: user.phone_number,
+    });
+
+    if (!result.success) {
+      return res.status(400).json({
+        success: false,
+        message: result.message,
+      });
+    }
+
+    const bankAccount = result.data.bankAccounts[0];
+    
+    const virtualAccount = new VirtualAccount({
+      user: new mongoose.Types.ObjectId(userId),
+      accountNumber: bankAccount.accountNumber,
+      accountName: bankAccount.accountName,
+      bankName: bankAccount.bankName,
+      provider: 'paymentpoint',
+      reference: result.data.customer.customer_id,
+      status: 'active',
+      metadata: {
+        virtualAccountName: result.data.customer.customer_name,
+        virtualAccountNo: bankAccount.accountNumber,
+        identityType: 'NIN',
+        licenseNumber: result.data.customer.customer_id
+      }
+    });
+    
+    await virtualAccount.save();
+
+    // Update user's virtual_account field
+    user.virtual_account = {
+      account_number: bankAccount.accountNumber,
+      account_name: bankAccount.accountName,
+      bank_name: bankAccount.bankName,
+      account_reference: result.data.customer.customer_id,
+      provider: 'paymentpoint',
+      status: 'active'
+    };
+    await user.save();
+
+    // Create wallet if doesn't exist
+    let wallet = await Wallet.findOne({ user_id: new mongoose.Types.ObjectId(userId) });
+    if (!wallet) {
+      wallet = new Wallet({
+        user_id: new mongoose.Types.ObjectId(userId),
+        balance: 0,
+        currency: 'NGN'
+      });
+      await wallet.save();
+    }
+
+    return res.status(201).json({
+      success: true,
+      message: 'Virtual account created successfully',
+      data: {
+        accountNumber: virtualAccount.accountNumber,
+        accountName: virtualAccount.accountName,
+        bankName: virtualAccount.bankName,
+        reference: virtualAccount.reference,
+        provider: virtualAccount.provider,
+        status: virtualAccount.status
+      },
+    });
   } catch (error) {
     console.error('Create virtual account error:', error);
     return res.status(500).json({
@@ -46,7 +134,7 @@ export const getVirtualAccount = async (req: AuthRequest, res: Response) => {
     }
     
     const virtualAccount = await VirtualAccount.findOne({
-      user: userId,
+      user: new mongoose.Types.ObjectId(userId),
       provider: 'paymentpoint'
     });
 
@@ -82,10 +170,18 @@ export const getVirtualAccount = async (req: AuthRequest, res: Response) => {
 export const paymentWebhook = async (req: Request, res: Response) => {
   try {
     console.log('📡 PaymentPoint webhook received:', new Date().toISOString());
-    console.log('📡 Body:', JSON.stringify(req.body, null, 2));
-
-    const payload = req.body;
     
+    // Parse body properly
+    let payload: any;
+    if (req.body instanceof Buffer) {
+      const rawBody = req.body.toString('utf8');
+      payload = JSON.parse(rawBody);
+    } else {
+      payload = req.body;
+    }
+    
+    console.log('📡 Payload:', JSON.stringify(payload, null, 2));
+
     let accountNumber: string;
     let amount: number;
     let reference: string;
@@ -116,22 +212,22 @@ export const paymentWebhook = async (req: Request, res: Response) => {
         return res.status(200).json({ success: true });
       }
       
-      const Wallet = mongoose.model('Wallet');
-      let wallet = await Wallet.findOne({ user_id: user._id });
+      let wallet = await Wallet.findOne({ user_id: virtualAccount.user });
       if (!wallet) {
         wallet = new Wallet({
-          user_id: user._id,
+          user_id: virtualAccount.user,
           balance: 0,
           currency: 'NGN'
         });
+        await wallet.save();
       }
       
+      const previousBalance = wallet.balance;
       wallet.balance += amount;
       await wallet.save();
       
-      const Transaction = mongoose.model('Transaction');
       const transaction = new Transaction({
-        user_id: user._id,
+        user_id: virtualAccount.user,
         wallet_id: wallet._id,
         type: 'wallet_topup',
         amount: amount,
@@ -146,6 +242,7 @@ export const paymentWebhook = async (req: Request, res: Response) => {
       await transaction.save();
       
       console.log(`✅ Wallet credited: ${user.email} - ₦${amount}`);
+      console.log(`💰 Previous: ₦${previousBalance} → New: ₦${wallet.balance}`);
     }
     
     return res.status(200).json({ success: true });
