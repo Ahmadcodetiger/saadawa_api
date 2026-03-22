@@ -1,18 +1,13 @@
 import { Request, Response } from 'express';
-import { User } from '../models/user.model.js';  // Use user.model.js (lowercase)
-import VirtualAccount from '../models/VirtualAccount.js';  // Use .js extension
+import mongoose from 'mongoose';
+import { User } from '../models/user.model.js';
+import VirtualAccount from '../models/virtualAccount.js';
 import paymentPointService from '../services/paymentPoint.service.js';
-import mongoose from 'mongoose';
 
-// ... rest of the code
-import mongoose from 'mongoose';
-
-// Create virtual account for user
 export const createVirtualAccount = async (req: Request, res: Response) => {
   try {
     const userId = req.user.id;
     
-    // Check if user exists
     const user = await User.findById(userId);
     if (!user) {
       return res.status(404).json({
@@ -56,7 +51,6 @@ export const createVirtualAccount = async (req: Request, res: Response) => {
       });
     }
 
-    // Get the first bank account from response
     const bankAccount = result.data.bankAccounts[0];
     
     // Save virtual account to database
@@ -82,14 +76,23 @@ export const createVirtualAccount = async (req: Request, res: Response) => {
     await virtualAccount.save();
 
     // Also update user's virtual_account field for backward compatibility
-    user.virtual_account = {
-      account_number: bankAccount.accountNumber,
-      account_name: bankAccount.accountName,
-      bank_name: bankAccount.bankName,
-      account_reference: result.data.customer.customer_id,
-      provider: 'paymentpoint',
-      status: 'active'
-    };
+    if (user.virtual_account) {
+      user.virtual_account.account_number = bankAccount.accountNumber;
+      user.virtual_account.account_name = bankAccount.accountName;
+      user.virtual_account.bank_name = bankAccount.bankName;
+      user.virtual_account.account_reference = result.data.customer.customer_id;
+      user.virtual_account.provider = 'paymentpoint';
+      user.virtual_account.status = 'active';
+    } else {
+      user.virtual_account = {
+        account_number: bankAccount.accountNumber,
+        account_name: bankAccount.accountName,
+        bank_name: bankAccount.bankName,
+        account_reference: result.data.customer.customer_id,
+        provider: 'paymentpoint',
+        status: 'active'
+      };
+    }
     await user.save();
 
     return res.status(201).json({
@@ -113,12 +116,10 @@ export const createVirtualAccount = async (req: Request, res: Response) => {
   }
 };
 
-// Get user's virtual account
 export const getVirtualAccount = async (req: Request, res: Response) => {
   try {
     const userId = req.user.id;
     
-    // Find virtual account
     const virtualAccount = await VirtualAccount.findOne({
       user: userId,
       provider: 'paymentpoint'
@@ -153,7 +154,6 @@ export const getVirtualAccount = async (req: Request, res: Response) => {
   }
 };
 
-// Webhook for PaymentPoint payment notifications
 export const paymentWebhook = async (req: Request, res: Response) => {
   try {
     console.log('📡 PaymentPoint webhook received:', new Date().toISOString());
@@ -161,46 +161,36 @@ export const paymentWebhook = async (req: Request, res: Response) => {
 
     const payload = req.body;
     
-    // Parse payment details based on PaymentPoint structure
     let accountNumber: string;
     let amount: number;
     let reference: string;
-    let status: string;
     
     if (payload.data) {
       accountNumber = payload.data.accountNumber || payload.data.account_number;
       amount = payload.data.amount;
       reference = payload.data.reference || payload.data.transactionReference;
-      status = payload.data.status;
     } else {
       accountNumber = payload.accountNumber || payload.account_number;
       amount = payload.amount;
       reference = payload.reference || payload.transactionReference;
-      status = payload.status;
     }
     
-    // Process only successful payments
-    const isSuccess = status === 'successful' || status === 'success' || payload.event === 'payment.success';
-    
-    if (isSuccess && amount > 0 && accountNumber) {
-      // Find virtual account by account number
+    if (amount > 0 && accountNumber) {
       const virtualAccount = await VirtualAccount.findOne({ 
         accountNumber: accountNumber 
       });
       
       if (!virtualAccount) {
-        console.log(`Virtual account not found for account: ${accountNumber}`);
-        return res.status(200).json({ success: true, message: 'Account not found' });
+        console.log(`Virtual account not found for: ${accountNumber}`);
+        return res.status(200).json({ success: true });
       }
       
-      // Find user
       const user = await User.findById(virtualAccount.user);
       if (!user) {
         console.log(`User not found for account: ${accountNumber}`);
-        return res.status(200).json({ success: true, message: 'User not found' });
+        return res.status(200).json({ success: true });
       }
       
-      // Find or create wallet
       const Wallet = mongoose.model('Wallet');
       let wallet = await Wallet.findOne({ user_id: user._id });
       if (!wallet) {
@@ -211,12 +201,9 @@ export const paymentWebhook = async (req: Request, res: Response) => {
         });
       }
       
-      // Update wallet balance
-      const previousBalance = wallet.balance;
       wallet.balance += amount;
       await wallet.save();
       
-      // Create transaction record
       const Transaction = mongoose.model('Transaction');
       const transaction = new Transaction({
         user_id: user._id,
@@ -230,18 +217,15 @@ export const paymentWebhook = async (req: Request, res: Response) => {
         description: 'Wallet funding via PaymentPoint',
         payment_method: 'virtual_account',
         destination_account: accountNumber,
-        created_at: new Date(),
-        updated_at: new Date()
       });
       await transaction.save();
       
       console.log(`✅ Wallet credited: ${user.email} - ₦${amount}`);
-      console.log(`💰 Previous: ₦${previousBalance} → New: ₦${wallet.balance}`);
     }
     
-    return res.status(200).json({ success: true, message: 'Webhook processed' });
+    return res.status(200).json({ success: true });
   } catch (error) {
     console.error('Webhook error:', error);
-    return res.status(200).json({ success: true, message: 'Webhook received' });
+    return res.status(200).json({ success: true });
   }
 };
