@@ -1,8 +1,10 @@
-import { Response } from 'express';
+import { Request, Response } from 'express';
 import mongoose from 'mongoose';
 import { AuthRequest } from '../types/index.js';
 import { User } from '../models/user.model.js';
 import VirtualAccount from '../models/VirtualAccount.js';
+import { Wallet } from '../models/wallet.model.js';
+import { Transaction } from '../models/transaction.model.js';
 import paymentPointService from '../services/paymentPoint.service.js';
 
 export const createVirtualAccount = async (req: AuthRequest, res: Response) => {
