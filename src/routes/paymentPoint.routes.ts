@@ -1,6 +1,10 @@
 import express from 'express';
 import { authMiddleware } from '../middleware/auth.middleware.js';
-import * as paymentPointController from '../controllers/paymentPoint.controller.js';
+import { 
+  createVirtualAccount, 
+  getVirtualAccount, 
+  paymentWebhook 
+} from '../controllers/paymentPoint.controller.js';
 
 const router = express.Router();
 
@@ -8,19 +12,19 @@ const router = express.Router();
 router.post(
   '/create-virtual-account',
   authMiddleware,
-  paymentPointController.createVirtualAccount
+  createVirtualAccount
 );
 
 router.get(
   '/virtual-account',
   authMiddleware,
-  paymentPointController.getVirtualAccount
+  getVirtualAccount
 );
 
 // Public webhook endpoint (no auth required)
 router.post(
   '/webhook',
-  paymentPointController.paymentWebhook
+  paymentWebhook
 );
 
 // Test endpoint
